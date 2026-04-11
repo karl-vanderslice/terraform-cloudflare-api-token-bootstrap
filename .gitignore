@@ -1,7 +1,12 @@
 # Local Terraform working directory
 .terraform/
 
+# Keep lock file committed even if globally ignored.
+!flake.lock
+
 # Terraform state and crash artifacts
+terraform.tfstate
+terraform.tfstate.*
 *.tfstate
 *.tfstate.*
 crash.log
