@@ -21,13 +21,12 @@ checkov:
   nix develop -c checkov -d . --config-file .checkov.yaml
 
 lint:
-  nix develop -c pre-commit run --all-files --show-diff-on-failure
+  nix flake check --print-build-logs
 
 install-hooks:
-  nix develop -c pre-commit install --install-hooks
+  nix develop -c true
 
 ci:
-  nix flake check --print-build-logs
   just lint
 
 show-token-id:

@@ -78,21 +78,20 @@ This token is intentionally broad for bootstrap workflows. After bootstrapping, 
 - `just plan` runs plan in the Nix shell.
 - `just apply` runs apply in the Nix shell.
 - `just checkov` runs Checkov against Terraform files.
-- `just lint` runs all pre-commit hooks over the repository.
-- `just install-hooks` installs local pre-commit git hooks.
-- `just ci` runs `nix flake check` and all pre-commit hooks.
+- `just lint` runs all Nix-defined checks (including hooks) via `nix flake check`.
+- `just install-hooks` enters the Nix dev shell to install git hooks from `nix-pre-commit-hooks`.
+- `just ci` runs the same Nix-defined checks used by CI.
 - `just show-token-id` prints the token ID.
 - `just show-token-value` prints the token value.
 
 ## Security and secret hygiene
 
 - `.gitignore` excludes local state and variable files, including `terraform.tfvars`.
-- Pre-commit hooks block private keys and likely secrets before commit.
-- Checkov runs both locally and in CI to enforce Terraform security checks.
+- Git hooks are managed by `https://github.com/serokell/nix-pre-commit-hooks` from the Nix flake.
+- Terraform format, Checkov, and secret scanning are enforced as Nix flake checks.
 
 ## CI/CD
 
 GitHub Actions is configured at `.github/workflows/ci.yml` to run on push and pull requests.
 
-- `nix flake check` for Nix-native checks.
-- `pre-commit run --all-files` for Terraform formatting, validation, and security gates.
+- `nix flake check` only, with all quality/security gates defined in the flake.

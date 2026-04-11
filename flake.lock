@@ -34,10 +34,27 @@
         "type": "github"
       }
     },
+    "pre-commit-hooks": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1567515985,
+        "narHash": "sha256-0DIYQn4hN0s+2yNPJUb5DMTdKBf2m/ENDzZAIF6DcYQ=",
+        "owner": "serokell",
+        "repo": "nix-pre-commit-hooks",
+        "rev": "bab8d9deb552edea512e4b8d140361a66b13b919",
+        "type": "github"
+      },
+      "original": {
+        "owner": "serokell",
+        "repo": "nix-pre-commit-hooks",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "flake-utils": "flake-utils",
-        "nixpkgs": "nixpkgs"
+        "nixpkgs": "nixpkgs",
+        "pre-commit-hooks": "pre-commit-hooks"
       }
     },
     "systems": {

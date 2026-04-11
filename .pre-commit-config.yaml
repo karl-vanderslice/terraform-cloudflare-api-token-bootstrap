@@ -1,39 +1,6 @@
 repos:
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+  - repo: .pre-commit-hooks/
+    rev: master
     hooks:
-      - id: check-merge-conflict
-      - id: check-yaml
-      - id: end-of-file-fixer
-      - id: trailing-whitespace
-      - id: detect-private-key
-
-  - repo: https://github.com/antonbabenko/pre-commit-terraform
-    rev: v1.99.2
-    hooks:
-      - id: terraform_fmt
-      - id: terraform_validate
-
-  - repo: https://github.com/bridgecrewio/checkov.git
-    rev: 3.2.455
-    hooks:
-      - id: checkov
-        args:
-          - --config-file
-          - .checkov.yaml
-
-  - repo: https://github.com/Yelp/detect-secrets
-    rev: v1.5.0
-    hooks:
-      - id: detect-secrets
-        args:
-          - --exclude-files
-          - (^|/)\.terraform\.lock\.hcl$
-          - --exclude-files
-          - (^|/)terraform\.tfvars\.example$
-          - --exclude-files
-          - (^|/)terraform.tfvars$
-          - --exclude-files
-          - (^|/)terraform\.tfstate(\..*)?$
-          - --exclude-lines
-          - ^\s*api_key\s*=\s*var\.cloudflare_global_api_key\s*$
+      - id: nixpkgs-fmt
+      - id: shellcheck
