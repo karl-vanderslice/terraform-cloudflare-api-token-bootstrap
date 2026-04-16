@@ -23,6 +23,9 @@ checkov:
 lint:
   nix flake check --print-build-logs
 
+pre-commit:
+  nix build .#checks.x86_64-linux.pre-commit
+
 install-hooks:
   nix develop -c true
 
