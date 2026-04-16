@@ -29,6 +29,7 @@ terraform.rc
 .env
 .env.*
 .direnv/
+!.envrc
 
 # Tooling caches
 .pre-commit-cache/
