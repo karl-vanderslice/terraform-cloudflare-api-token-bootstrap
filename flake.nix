@@ -83,28 +83,30 @@
         pre-commit = preCommitCheck;
         formatting = treefmtEval.config.build.check self;
 
-        terraform-fmt = pkgs.runCommand "terraform-fmt-check" {
-          src = self;
-          nativeBuildInputs = [pkgs.terraform];
-        } ''
-          cp -R "$src" repo
-          chmod -R u+w repo
-          cd repo
-          terraform fmt -check -recursive .
-          touch "$out"
-        '';
+        terraform-fmt =
+          pkgs.runCommand "terraform-fmt-check" {
+            src = self;
+            nativeBuildInputs = [pkgs.terraform];
+          } ''
+            cp -R "$src" repo
+            chmod -R u+w repo
+            cd repo
+            terraform fmt -check -recursive .
+            touch "$out"
+          '';
 
-        checkov = pkgs.runCommand "checkov-scan" {
-          src = self;
-          nativeBuildInputs = [pkgs.checkov];
-        } ''
-          cp -R "$src" repo
-          chmod -R u+w repo
-          cd repo
-          export HOME="$TMPDIR"
-          checkov -d . --config-file .checkov.yaml
-          touch "$out"
-        '';
+        checkov =
+          pkgs.runCommand "checkov-scan" {
+            src = self;
+            nativeBuildInputs = [pkgs.checkov];
+          } ''
+            cp -R "$src" repo
+            chmod -R u+w repo
+            cd repo
+            export HOME="$TMPDIR"
+            checkov -d . --config-file .checkov.yaml
+            touch "$out"
+          '';
       };
 
       devShells.default = pkgs.mkShell {
