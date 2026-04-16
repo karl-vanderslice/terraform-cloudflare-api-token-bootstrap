@@ -53,6 +53,15 @@ By default, the token includes account and account-zone scoped permissions.
 
 7. Read the sensitive token output when apply completes, then store it in your secret manager.
 
+## State Backend
+
+State is stored in HCP Terraform workspace
+`terraform-cloudflare-api-token-bootstrap` under organization
+`karl-vanderslice-org` on `app.terraform.io`.
+
+Authenticate Terraform CLI with `TFE_TOKEN` (or run `terraform login`) before
+`just init`/`terraform init`.
+
 ## Sensible defaults
 
 - `token_name` defaults to `terraform-superuser`.
