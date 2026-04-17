@@ -1,0 +1,18 @@
+[project]
+site_name = "terraform-cloudflare-api-token-bootstrap"
+site_description = "Terraform bootstrap for broad Cloudflare API token creation"
+site_url = "https://github.com/karl-vanderslice/terraform-cloudflare-api-token-bootstrap"
+repo_name = "karl-vanderslice/terraform-cloudflare-api-token-bootstrap"
+repo_url = "https://github.com/karl-vanderslice/terraform-cloudflare-api-token-bootstrap"
+docs_dir = "docs"
+site_dir = "site"
+
+nav = [
+  { Home = "index.md" },
+]
+
+[project.theme]
+variant = "modern"
+
+[project.theme.palette]
+scheme = "slate"
