@@ -32,6 +32,9 @@ install-hooks:
 ci:
   just lint
 
+terraform-docs:
+  nix develop -c terraform-docs markdown table --output-file README.md --output-mode inject .
+
 show-token-id:
   nix develop -c terraform output -raw superuser_api_token_id
 
