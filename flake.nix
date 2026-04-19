@@ -113,6 +113,7 @@
         inherit (preCommitCheck) shellHook;
         packages = with pkgs; [
           terraform
+          vault
           terraform-docs
           checkov
           gitleaks
