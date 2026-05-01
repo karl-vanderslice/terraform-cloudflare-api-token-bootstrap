@@ -89,7 +89,7 @@ This token is intentionally broad for bootstrap workflows. After bootstrapping, 
 - `just checkov` runs Checkov against Terraform files.
 - `just lint` runs all Nix-defined checks (including hooks) via `nix flake check`.
 - `just install-hooks` enters the Nix dev shell to install git hooks from `nix-pre-commit-hooks`.
-- `just ci` runs the same Nix-defined checks used by CI.
+- `just ci` runs the full Nix-defined local quality checks.
 - `just show-token-id` prints the token ID.
 - `just show-token-value` prints the token value.
 
@@ -148,8 +148,7 @@ No modules.
 | <a name="output_superuser_api_token_value"></a> [superuser\_api\_token\_value](#output\_superuser\_api\_token\_value) | Generated API token value. Store it securely; Cloudflare returns it only at creation time. |
 <!-- END_TF_DOCS -->
 
-## CI/CD
+## Quality checks
 
-GitHub Actions is configured at `.github/workflows/ci.yml` to run on push and pull requests.
-
-- `nix flake check` only, with all quality/security gates defined in the flake.
+This repository no longer carries GitHub Actions workflows. Run `just ci`
+locally to execute the full Nix-defined quality and security checks.
