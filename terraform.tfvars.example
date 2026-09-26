@@ -1,10 +1,13 @@
-# Copy this file to terraform.tfvars and set the account ID from the Cloudflare dashboard.
-cloudflare_account_id = "0123456789abcdef0123456789abcdef"
+# The default creates a user-owned Read All Resources token.
+# No account ID is needed. The provider looks up the authenticated user ID.
 
-# Optional. The default grants read permissions only.
-# token_mode = "read_only"
-# token_name = "cloudflare-mcp-read-only"
+# If the bootstrap credential lacks User Details Read, set your user ID:
+# cloudflare_user_id = "0123456789abcdef0123456789abcdef"
+
+# Optional:
+# token_name = "cloudflare-mcp-read-all"
 # allowed_cidrs = ["203.0.113.10/32"]
 
-# To retain the original broad administrative behavior, set:
+# To retain the original account-owned broad admin token, set both:
 # token_mode = "admin"
+# cloudflare_account_id = "0123456789abcdef0123456789abcdef"

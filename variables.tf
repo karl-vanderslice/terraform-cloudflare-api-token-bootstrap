@@ -1,15 +1,5 @@
-variable "cloudflare_account_id" {
-  description = "Cloudflare account ID that owns the token and defines its resource boundary."
-  type        = string
-
-  validation {
-    condition     = can(regex("^[0-9a-fA-F]{32}$", var.cloudflare_account_id))
-    error_message = "cloudflare_account_id must be a 32-character hexadecimal Cloudflare account ID."
-  }
-}
-
 variable "token_mode" {
-  description = "Permission mode: read_only grants account, zone, and R2 bucket read groups; admin grants all account and zone groups."
+  description = "read_only creates a user-owned Read All Resources token; admin keeps the account-owned broad token."
   type        = string
   default     = "read_only"
 
@@ -19,8 +9,30 @@ variable "token_mode" {
   }
 }
 
+variable "cloudflare_user_id" {
+  description = "Optional user ID for the read-only token. If unset, the provider looks up the authenticated user."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.cloudflare_user_id == null || can(regex("^[0-9a-fA-F]{32}$", var.cloudflare_user_id))
+    error_message = "cloudflare_user_id must be a 32-character hexadecimal Cloudflare user ID."
+  }
+}
+
+variable "cloudflare_account_id" {
+  description = "Account ID required only in admin mode."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.cloudflare_account_id == null || can(regex("^[0-9a-fA-F]{32}$", var.cloudflare_account_id))
+    error_message = "cloudflare_account_id must be a 32-character hexadecimal Cloudflare account ID."
+  }
+}
+
 variable "token_name" {
-  description = "Optional token name. Defaults to cloudflare-read-only or cloudflare-admin."
+  description = "Optional token name. Defaults to cloudflare-read-all or cloudflare-admin."
   type        = string
   default     = null
 

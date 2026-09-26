@@ -1,16 +1,10 @@
 # Cloudflare API token bootstrap
 
-This repository creates one account-owned Cloudflare token for a selected
-account. The default is broad read access to account, zone, and R2 bucket
-resources. An explicit `admin` mode retains broad account and zone
-permissions for bootstrap work.
+This repository creates a user-owned Cloudflare Read All Resources token by
+default. Its read permissions cover every account and zone available to the
+authenticated user and the user's own resources. An explicit `admin` mode
+retains the original broad account-owned token for one selected account.
 
-Start with the [repository README](https://github.com/karl-vanderslice/terraform-cloudflare-api-token-bootstrap#readme)
-for setup, authentication, local state, and migration instructions. Its
+The [repository README](https://github.com/karl-vanderslice/terraform-cloudflare-api-token-bootstrap#readme)
+covers setup, Wrangler login, local state, mode changes, and migration. Its
 generated Terraform reference lists the exact inputs and outputs.
-
-Read-only access follows Cloudflare's token permission groups and product
-support. Cloudflare account-owned tokens do not cover user-scoped resources or
-every Cloudflare product. Review the [account token compatibility
-matrix](https://developers.cloudflare.com/fundamentals/api/get-started/account-owned-tokens/)
-before assigning the credential to a client.

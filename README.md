@@ -1,58 +1,56 @@
 # Cloudflare API token bootstrap
 
-Create one account-owned Cloudflare API token with Terraform. The default
-`read_only` mode grants available read permissions for the selected account,
-its zones, and its R2 buckets. Set `token_mode = "admin"` to retain the broad
-account and zone permissions used by the original bootstrap configuration.
+Create a Cloudflare API token with Terraform and keep its state locally. The
+default `read_only` mode creates a **user-owned Read All Resources token** for
+an MCP client. It grants available read permissions across every account and
+zone that the authenticated user can access, plus the user's own resources.
+Set `token_mode = "admin"` to keep the original broad, account-owned bootstrap
+token for one selected account.
 
-This repository uses local Terraform state. It does not configure HCP Terraform,
-store bootstrap credentials in variables, or configure a downstream MCP server.
+## Access model
 
-## Scope and limits
+Cloudflare's [Read All Resources template](https://developers.cloudflare.com/fundamentals/api/reference/template/)
+combines account, zone, and user read permissions with all-account and all-zone
+resources. This configuration discovers the current user-token permission
+groups and builds a separate policy for each scope. It selects groups whose
+names end in `Read` or `Read-Only`, plus the documented read-only
+`Account Security Center Insights` group. Cloudflare can add or rename
+groups, so inspect each plan before applying permission changes.
 
-The token belongs to **one explicitly selected Cloudflare account**. Policies
-cover that account, all current and future zones in it, and, in read-only mode,
-all R2 buckets in it. Cloudflare assigns permissions to distinct account, zone,
-and bucket resource scopes, so Terraform builds a separate policy for each.
-Permission groups come from Cloudflare's account-token API at plan time. Read-only
-mode selects groups whose names end in `Read` or `Read-Only`, plus the
-documented read-only `Account Security Center Insights` group. Review the
-planned permission changes whenever Cloudflare adds groups.
+User tokens inherit the user's access. A token cannot read resources that its
+owner cannot access, and a read permission does not make every MCP tool
+read-only. Configure the MCP server's tool allowlist separately. Cloudflare
+documents the [permission scopes](https://developers.cloudflare.com/fundamentals/api/reference/permissions/)
+and [user versus account token behavior](https://developers.cloudflare.com/fundamentals/api/get-started/account-owned-tokens/).
 
-An account-owned token cannot grant user-scoped permissions, cover other
-accounts, or access products that do not support account tokens. Cloudflare
-maintains a [product compatibility matrix](https://developers.cloudflare.com/fundamentals/api/get-started/account-owned-tokens/).
-If your MCP server needs user resources or multiple accounts, create a
-user-owned token with Cloudflare's
-[Read All Resources template](https://developers.cloudflare.com/fundamentals/api/reference/template/)
-in the dashboard instead. That token has the user's access boundary and is not
-managed by this repository. A read-only token also does not make an MCP server's
-tools read-only; configure the server's allowed tools separately.
+The `admin` mode retains all available account and zone permission groups for
+one explicit `cloudflare_account_id`. It creates an account-owned token, not a
+user token. Switching modes changes token ownership and plans to revoke the
+old token and create the other one. Review the plan and coordinate the MCP
+credential handoff before applying a mode change.
 
 ## Quick start
 
-You need Nix, access to the target Cloudflare account as a Super Administrator,
-and a bootstrap credential authorized for **Account API Tokens Write** on that
-account. Find the account ID in the Cloudflare dashboard. Cloudflare documents
-[account-token creation requirements](https://developers.cloudflare.com/fundamentals/api/get-started/account-owned-tokens/)
-and the [token creation API permission](https://developers.cloudflare.com/api/resources/accounts/subresources/tokens/methods/create/).
+You need Nix and a bootstrap credential that can create **user-owned** API
+tokens. Cloudflare's [Create Additional Tokens template](https://developers.cloudflare.com/fundamentals/api/how-to/create-via-api/)
+grants that capability. A Wrangler browser session may also work if its OAuth
+grant has the required access.
 
-1. Enter the development shell and set the account ID:
+1. Enter the development shell, or run `direnv allow` once if you use direnv:
 
    ```sh
    nix develop
-   cp terraform.tfvars.example terraform.tfvars
    ```
 
-   Replace the example ID in the ignored `terraform.tfvars`. Leave
-   `token_mode` unset for read-only access. Set `token_mode = "admin"` only
-   for the original broad bootstrap use case.
+   The shell provides Terraform, Wrangler, and the `just` task runner. The
+   tracked `.envrc` loads the same flake when direnv is enabled. Copy
+   `terraform.tfvars.example` to ignored `terraform.tfvars` only when you
+   want to set an optional input. Read-only mode needs no account ID.
 
-2. Supply a bootstrap credential using one of the paths in
-   [Bootstrap authentication](#bootstrap-authentication). Keep it outside
-   Terraform variables and the repository.
+2. Supply a credential from [Bootstrap authentication](#bootstrap-authentication).
+   Keep it outside Terraform variables and the repository.
 
-3. Check the configuration and inspect the actual plan:
+3. Validate and review the plan:
 
    ```sh
    just ci
@@ -60,22 +58,22 @@ and the [token creation API permission](https://developers.cloudflare.com/api/re
    just plan
    ```
 
-   Confirm the account ID, token name, resource scopes, permission groups, and
-   that the plan changes only the intended token. `just plan` calls Cloudflare
-   but does not create a token.
+   Confirm the token type, permission groups, resource scopes, and any
+   replacement of an existing token. If the current-user lookup fails because
+   the bootstrap credential lacks `User Details Read`, set
+   `cloudflare_user_id` in `terraform.tfvars` and plan again.
 
-4. Create or update the token:
+4. Apply the reviewed plan:
 
    ```sh
    just apply
    ```
 
-   Terraform asks for approval. Retrieve `api_token_value` with
+   Terraform asks for approval. Retrieve the sensitive output with
    `terraform output -raw api_token_value` in a private terminal, or pipe it
-   directly into the secret transport owned by your MCP server. This command
-   prints the secret; never log or save its output in the repository. The non-secret
-   `api_token_id` is available with `just show-token-id`. Do not place the
-   token value in an MCP config committed to Git.
+   into the secret transport owned by your MCP server. That command prints
+   the secret; never log or commit its output. `just show-token-id` prints
+   the non-secret token ID.
 
 5. Remove the bootstrap credential from the shell:
 
@@ -83,25 +81,21 @@ and the [token creation API permission](https://developers.cloudflare.com/api/re
    unset CLOUDFLARE_API_TOKEN CLOUDFLARE_API_KEY CLOUDFLARE_EMAIL
    ```
 
-   Keep the local state secure while the token exists. The token value remains
-   in state even though Terraform marks its output sensitive.
+   Keep the local state protected while the token exists.
 
 ## Bootstrap authentication
 
-Cloudflare's Terraform provider reads `CLOUDFLARE_API_TOKEN` or the legacy
-`CLOUDFLARE_API_KEY` and `CLOUDFLARE_EMAIL` environment variables. It does not
-accept a Cloudflare username and password directly. Use the dashboard login to
-create a short-lived bootstrap token, or use Wrangler's browser login and pass
-its access token into the shell. Cloudflare documents the
-[provider environment variables](https://developers.cloudflare.com/api/terraform/)
-and [Wrangler authentication commands](https://developers.cloudflare.com/workers/wrangler/commands/general/).
+The Cloudflare provider reads `CLOUDFLARE_API_TOKEN` or the legacy
+`CLOUDFLARE_API_KEY` and `CLOUDFLARE_EMAIL` environment variables. It does
+not accept a username and password directly. Cloudflare documents the
+[provider environment variables](https://developers.cloudflare.com/api/terraform/).
 
-### Short-lived bootstrap API token
+### Short-lived API token
 
-In **Manage Account > Account API Tokens**, create a token for the selected
-account with `Account API Tokens Write`. Set a short expiration and, if useful,
-a client IP restriction. The bootstrap token is separate from the token that
-this repository creates. Enter its value without shell echo or history:
+Sign in to the Cloudflare dashboard with your normal credentials. Under
+**My Profile > API Tokens**, create a temporary token from **Create Additional
+Tokens**. Restrict its lifetime and client IP if practical. Enter the token
+into the current shell without echoing it or putting it in shell history:
 
 ```sh
 read -rsp 'Bootstrap API token: ' CLOUDFLARE_API_TOKEN
@@ -109,35 +103,37 @@ printf '\n'
 export CLOUDFLARE_API_TOKEN
 ```
 
-The read-only output token cannot create another token. Creating an
-account-owned token still requires write-capable bootstrap authority.
+The template grants `API Tokens Write`, which can create user tokens. It does
+not necessarily grant `User Details Read`. If Terraform cannot look up the
+current user's ID, supply `cloudflare_user_id` from a trusted user-profile
+record. Cloudflare's [current-user API](https://developers.cloudflare.com/api/resources/user/methods/get/)
+returns that ID when the credential has `User Details Read`.
 
 ### Wrangler browser login
 
-If you already have Wrangler installed, log in using your normal Cloudflare
-dashboard account. Wrangler can keep its OAuth refresh credential in the OS
-keyring with `--use-keyring`; its default storage is a plaintext local file.
-The Terraform provider does not read Wrangler's login itself. Move only the
-short-lived access token into the current shell:
+The development shell includes Wrangler. Use its browser OAuth flow, then
+pass the access token to Terraform without printing it:
 
 ```sh
 unset CLOUDFLARE_API_TOKEN CLOUDFLARE_API_KEY CLOUDFLARE_EMAIL
-wrangler login --use-keyring
+wrangler login
 IFS= read -r CLOUDFLARE_API_TOKEN < <(wrangler auth token)
 export CLOUDFLARE_API_TOKEN
 ```
 
-The shell bridge requires Bash. If the access token expires between plan and
-apply, repeat the `read` and `export` lines to obtain a refreshed token.
-The Wrangler login must have enough Cloudflare authorization to create account
-tokens; if Cloudflare rejects it, use the short-lived bootstrap API token path.
-Run `wrangler logout` when you want to revoke Wrangler's OAuth session.
-Wrangler is optional and is not a dependency of this Nix shell.
+This shell bridge requires Bash. The provider does not read Wrangler's
+session automatically. Repeat the `read` and `export` lines if the access
+token expires before apply. The pinned Wrangler package stores OAuth
+credentials in a local config file during login; run `wrangler logout` after
+the bootstrap to revoke the session and remove that file. Do not print
+`wrangler auth token` to the terminal. If Cloudflare rejects the OAuth
+credential for token creation, use the short-lived API token path.
+Cloudflare documents [Wrangler login and token retrieval](https://developers.cloudflare.com/workers/wrangler/commands/general/).
 
 ### Global API key
 
-The legacy Global API Key works with the account email, but is long-lived and
-broad. Use it only if a scoped bootstrap token or Wrangler login is unavailable:
+The Global API Key works with the account email but is long-lived and broad.
+Use it only if the other paths are unavailable:
 
 ```sh
 read -rp 'Cloudflare account email: ' CLOUDFLARE_EMAIL
@@ -146,43 +142,52 @@ printf '\n'
 export CLOUDFLARE_EMAIL CLOUDFLARE_API_KEY
 ```
 
-Keep `CLOUDFLARE_API_TOKEN` unset when using this path. Never put any of these
-credentials in `terraform.tfvars`, `.env`, command arguments, or saved plans.
+Keep `CLOUDFLARE_API_TOKEN` unset on this path. Do not put credentials in
+`terraform.tfvars`, `.env`, command arguments, or saved plans.
 
-## Local state and migration
+## Admin mode
 
-The local backend writes `terraform.tfstate` and backup files beside the
-configuration. These files contain the created token value in plaintext.
-`.gitignore` excludes them and local plan and variable files. Keep the
-directory accessible only to the operator, back up state through an encrypted
-secret storage process, and delete backups through that process when no longer
-needed. Losing state does not revoke the token; revoke it in Cloudflare if the
-value or state is exposed.
+Copy `terraform.tfvars.example` to ignored `terraform.tfvars`, then set:
 
-If this repository was already applied through HCP Terraform, **migrate its
-state before applying this local backend**. In the existing initialized
-working directory, take a protected state backup using your approved secret
-transport. After updating the configuration, run
-`terraform init -migrate-state` and inspect the migration prompt and
-resulting local state.
-Do not run `terraform init -reconfigure` against an existing remote state:
-that disconnects Terraform from the managed token and can produce a duplicate
-token on the next apply. The repository does not run this migration for you.
+```hcl
+token_mode            = "admin"
+cloudflare_account_id = "0123456789abcdef0123456789abcdef"
+```
 
-Existing state addresses migrate from
-`cloudflare_account_token.superuser` to `cloudflare_account_token.bootstrap`
-through a Terraform `moved` block. Changing from the old broad token to
-`read_only` intentionally changes its permissions. Review that plan before
-apply. Existing output names also change to `api_token_id` and
-`api_token_value`.
+Use a bootstrap credential with **Account API Tokens Write** and the
+required account role. Cloudflare documents the
+[account-token requirements](https://developers.cloudflare.com/fundamentals/api/get-started/account-owned-tokens/).
+Review the broad policy before `just apply`.
+
+## Local state and existing deployments
+
+The local backend writes `terraform.tfstate` and backups beside the
+configuration. State contains the output token value in plaintext even though
+Terraform marks the output sensitive. `.gitignore` excludes state, variables,
+plans, and generated files. Keep this directory private and back up state
+through an encrypted secret storage process. Losing state does not revoke
+the token.
+
+If an earlier version used HCP Terraform, migrate its state before applying
+the local backend. In the existing initialized working directory, take a
+protected backup, update the configuration, then run
+`terraform init -migrate-state`. Inspect the migration prompt and local
+state. Do not use `terraform init -reconfigure` on that existing remote
+state: it disconnects the managed token.
+
+Terraform moves existing `cloudflare_account_token.superuser` or
+`cloudflare_account_token.bootstrap` state to
+`cloudflare_account_token.bootstrap[0]` for admin mode. The new default
+read-only mode instead plans a **new user token and removal of any previously
+managed account token**. Complete the MCP credential handoff before approving
+that plan. Output names remain `api_token_id` and `api_token_value`.
 
 ## Development
 
 `just fmt` formats Terraform. `just test` runs validation and input
 regression tests without Cloudflare credentials. `just ci` runs the Nix
 quality checks and tests. `just terraform-docs` refreshes the generated
-reference below. `just install-hooks` installs the repository's Nix-managed
-Git hooks.
+reference below. `just install-hooks` installs the Nix-managed Git hooks.
 
 ## Terraform reference
 
@@ -209,21 +214,25 @@ No modules.
 | Name | Type |
 |------|------|
 | [cloudflare_account_token.bootstrap](https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/resources/account_token) | resource |
+| [cloudflare_api_token.read_all](https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/resources/api_token) | resource |
 | [cloudflare_account_api_token_permission_groups_list.all](https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/data-sources/account_api_token_permission_groups_list) | data source |
+| [cloudflare_api_token_permission_groups_list.all](https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/data-sources/api_token_permission_groups_list) | data source |
+| [cloudflare_user.current](https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/data-sources/user) | data source |
 
 ## Inputs
 
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
 | <a name="input_allowed_cidrs"></a> [allowed\_cidrs](#input\_allowed\_cidrs) | Optional client IP CIDR allow-list. Empty permits use from any client IP. | `list(string)` | `[]` | no |
-| <a name="input_cloudflare_account_id"></a> [cloudflare\_account\_id](#input\_cloudflare\_account\_id) | Cloudflare account ID that owns the token and defines its resource boundary. | `string` | n/a | yes |
-| <a name="input_token_mode"></a> [token\_mode](#input\_token\_mode) | Permission mode: read\_only grants account, zone, and R2 bucket read groups; admin grants all account and zone groups. | `string` | `"read_only"` | no |
-| <a name="input_token_name"></a> [token\_name](#input\_token\_name) | Optional token name. Defaults to cloudflare-read-only or cloudflare-admin. | `string` | `null` | no |
+| <a name="input_cloudflare_account_id"></a> [cloudflare\_account\_id](#input\_cloudflare\_account\_id) | Account ID required only in admin mode. | `string` | `null` | no |
+| <a name="input_cloudflare_user_id"></a> [cloudflare\_user\_id](#input\_cloudflare\_user\_id) | Optional user ID for the read-only token. If unset, the provider looks up the authenticated user. | `string` | `null` | no |
+| <a name="input_token_mode"></a> [token\_mode](#input\_token\_mode) | read\_only creates a user-owned Read All Resources token; admin keeps the account-owned broad token. | `string` | `"read_only"` | no |
+| <a name="input_token_name"></a> [token\_name](#input\_token\_name) | Optional token name. Defaults to cloudflare-read-all or cloudflare-admin. | `string` | `null` | no |
 
 ## Outputs
 
 | Name | Description |
 |------|-------------|
-| <a name="output_api_token_id"></a> [api\_token\_id](#output\_api\_token\_id) | ID of the account-owned API token. |
-| <a name="output_api_token_value"></a> [api\_token\_value](#output\_api\_token\_value) | Account-owned API token secret. Terraform stores this value in local state. |
+| <a name="output_api_token_id"></a> [api\_token\_id](#output\_api\_token\_id) | ID of the token created in the selected mode. |
+| <a name="output_api_token_value"></a> [api\_token\_value](#output\_api\_token\_value) | Token secret. Terraform stores this value in local state. |
 <!-- END_TF_DOCS -->
