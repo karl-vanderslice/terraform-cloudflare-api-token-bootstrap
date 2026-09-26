@@ -2,6 +2,7 @@ framework:
   - terraform
 quiet: true
 compact: true
+skip-download: true
 skip-path:
   - .terraform
   - terraform.tfstate

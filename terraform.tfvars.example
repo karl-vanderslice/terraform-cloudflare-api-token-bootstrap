@@ -1,8 +1,10 @@
-cloudflare_email          = "you@example.com"
-cloudflare_global_api_key = "your-global-api-key"
+# Copy this file to terraform.tfvars and set the account ID from the Cloudflare dashboard.
+cloudflare_account_id = "0123456789abcdef0123456789abcdef"
 
-# Optional: override defaults
-# token_name    = "terraform-superuser"
-# cloudflare_account_id = "<your-account-id>"
-# cloudflare_account_name = "Primary Account"
+# Optional. The default grants read permissions only.
+# token_mode = "read_only"
+# token_name = "cloudflare-mcp-read-only"
 # allowed_cidrs = ["203.0.113.10/32"]
+
+# To retain the original broad administrative behavior, set:
+# token_mode = "admin"

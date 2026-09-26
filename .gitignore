@@ -1,21 +1,22 @@
 # Local Terraform working directory
 .terraform/
+tfplan
+*.tfplan
+*.tfplan.json
+*.plan
+plan.out
+*.tfstate.lock.info
+*.tfvars
+*.tfvars.json
 
 # Keep lock file committed even if globally ignored.
 !flake.lock
 
 # Terraform state and crash artifacts
-terraform.tfstate
-terraform.tfstate.*
 *.tfstate
 *.tfstate.*
 crash.log
 crash.*.log
-
-# Local variable definitions (often contain secrets)
-terraform.tfvars
-*.auto.tfvars
-*.auto.tfvars.json
 
 # Override files
 override.tf
@@ -30,6 +31,9 @@ terraform.rc
 .env.*
 .direnv/
 !.envrc
+.pre-commit-config.yaml
+result
+site/
 
 # Tooling caches
 .pre-commit-cache/

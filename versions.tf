@@ -1,14 +1,7 @@
 terraform {
-  required_version = ">= 1.5.0"
+  required_version = ">= 1.7.0"
 
-  cloud {
-    hostname     = "app.terraform.io"
-    organization = "karl-vanderslice-org"
-
-    workspaces {
-      name = "terraform-cloudflare-api-token-bootstrap"
-    }
-  }
+  backend "local" {}
 
   required_providers {
     cloudflare = {

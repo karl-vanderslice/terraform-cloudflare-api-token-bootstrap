@@ -1,6 +1,6 @@
 [project]
 site_name = "terraform-cloudflare-api-token-bootstrap"
-site_description = "Terraform bootstrap for broad Cloudflare API token creation"
+site_description = "Terraform bootstrap for account-scoped Cloudflare API tokens"
 site_url = "https://github.com/karl-vanderslice/terraform-cloudflare-api-token-bootstrap"
 repo_name = "karl-vanderslice/terraform-cloudflare-api-token-bootstrap"
 repo_url = "https://github.com/karl-vanderslice/terraform-cloudflare-api-token-bootstrap"
@@ -10,7 +10,6 @@ extra_css = ["stylesheets/extra.css"]
 
 nav = [
   { Home = "index.md" },
-  { README = "README.md" },
 ]
 
 [project.theme]

@@ -1,88 +1,80 @@
-provider "cloudflare" {
-  email   = var.cloudflare_email
-  api_key = var.cloudflare_global_api_key
-}
-
-data "cloudflare_accounts" "all" {}
-
-data "cloudflare_accounts" "named" {
-  count = var.cloudflare_account_name != null ? 1 : 0
-  name  = var.cloudflare_account_name
-}
+provider "cloudflare" {}
 
 data "cloudflare_account_api_token_permission_groups_list" "all" {
-  account_id = local.target_account_id
-}
-
-data "cloudflare_zones" "all" {
-  account = {
-    id = local.target_account_id
-  }
-  max_items = 1000
+  account_id = var.cloudflare_account_id
 }
 
 locals {
-  target_account_id = coalesce(
-    var.cloudflare_account_id,
-    var.cloudflare_account_name != null ? data.cloudflare_accounts.named[0].result[0].id : null,
-    data.cloudflare_accounts.all.result[0].id
-  )
-
-  allowed_permission_scopes = toset([
-    "com.cloudflare.api.account",
-    "com.cloudflare.api.account.zone",
-  ])
-
-  # Collect every available permission group in supported scopes.
-  superuser_permission_group_ids = distinct([
-    for group in data.cloudflare_account_api_token_permission_groups_list.all.result : group.id
-    if length(setintersection(toset(group.scopes), local.allowed_permission_scopes)) > 0
-  ])
-
-  # Cloudflare allows at most 300 permission groups per policy.
-  superuser_permission_group_chunks = chunklist(local.superuser_permission_group_ids, 300)
-
-  base_superuser_resources = {
-    "com.cloudflare.api.account.${local.target_account_id}" = "*"
+  # Cloudflare grants permissions per resource scope. Keep separate policies so
+  # a zone or R2 bucket permission cannot inherit an account-wide resource.
+  permission_scopes = {
+    account = "com.cloudflare.api.account"
+    zone    = "com.cloudflare.api.account.zone"
+    bucket  = "com.cloudflare.edge.r2.bucket"
   }
 
-  zone_superuser_resources = {
-    for zone in data.cloudflare_zones.all.result :
-    "com.cloudflare.api.account.zone.${zone.id}" => "*"
+  permission_resources = {
+    account = jsonencode({
+      "com.cloudflare.api.account.${var.cloudflare_account_id}" = "*"
+    })
+    zone = jsonencode({
+      "com.cloudflare.api.account.${var.cloudflare_account_id}" = {
+        "com.cloudflare.api.account.zone.*" = "*"
+      }
+    })
+    bucket = jsonencode({
+      "com.cloudflare.api.account.${var.cloudflare_account_id}" = {
+        "com.cloudflare.edge.r2.bucket.*" = "*"
+      }
+    })
   }
 
-  superuser_resources = merge(local.base_superuser_resources, local.zone_superuser_resources)
+  # Cloudflare names read permissions with a Read suffix. Its documented
+  # Account Security Center Insights permission is also read-only.
+  permission_group_ids = {
+    for scope_name, scope_id in local.permission_scopes : scope_name => sort(distinct([
+      for group in data.cloudflare_account_api_token_permission_groups_list.all.result : group.id
+      if contains(group.scopes, scope_id) && (scope_name != "bucket" || var.token_mode == "read_only") && (
+        var.token_mode == "admin" ||
+        endswith(group.name, " Read") ||
+        endswith(group.name, " Read-Only") ||
+        group.name == "Account Security Center Insights"
+      )
+    ]))
+  }
+
+  # Cloudflare accepts at most 300 permission groups in one policy.
+  policies = flatten([
+    for scope_name, ids in local.permission_group_ids : [
+      for chunk in chunklist(ids, 300) : {
+        effect            = "allow"
+        permission_groups = [for id in chunk : { id = id }]
+        resources         = local.permission_resources[scope_name]
+      }
+    ]
+  ])
 }
 
-check "account_selector_inputs" {
-  assert {
-    condition = !(
-      var.cloudflare_account_id != null &&
-      var.cloudflare_account_name != null
-    )
-    error_message = "Set only one of cloudflare_account_id or cloudflare_account_name."
-  }
+moved {
+  from = cloudflare_account_token.superuser
+  to   = cloudflare_account_token.bootstrap
 }
 
-resource "cloudflare_account_token" "superuser" {
-  account_id = local.target_account_id
-  name       = var.token_name
-
-  policies = [
-    for permission_group_chunk in local.superuser_permission_group_chunks : {
-      effect = "allow"
-      permission_groups = [
-        for id in permission_group_chunk : {
-          id = id
-        }
-      ]
-      resources = jsonencode(local.superuser_resources)
-    }
-  ]
+resource "cloudflare_account_token" "bootstrap" {
+  account_id = var.cloudflare_account_id
+  name       = var.token_name != null ? var.token_name : "cloudflare-${replace(var.token_mode, "_", "-")}"
+  policies   = local.policies
 
   condition = length(var.allowed_cidrs) > 0 ? {
     request_ip = {
       in = var.allowed_cidrs
     }
   } : null
+
+  lifecycle {
+    precondition {
+      condition     = length(local.permission_group_ids.account) > 0 && length(local.permission_group_ids.zone) > 0
+      error_message = "Cloudflare returned no account or zone permission groups for the selected mode."
+    }
+  }
 }

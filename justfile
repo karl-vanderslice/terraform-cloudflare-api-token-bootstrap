@@ -5,17 +5,21 @@ fmt:
   nix develop -c terraform fmt -recursive
 
 init:
-  nix develop -c terraform init -upgrade
+  nix develop -c terraform init -lockfile=readonly
 
 validate:
-  nix develop -c terraform init -backend=false
+  just init
   nix develop -c terraform validate
+
+test:
+  just validate
+  nix develop -c terraform test
 
 plan:
   nix develop -c terraform plan
 
 apply:
-  nix develop -c terraform apply -auto-approve
+  nix develop -c terraform apply
 
 checkov:
   nix develop -c checkov -d . --config-file .checkov.yaml
@@ -31,12 +35,10 @@ install-hooks:
 
 ci:
   just lint
+  just test
 
 terraform-docs:
   nix develop -c terraform-docs markdown table --output-file README.md --output-mode inject .
 
 show-token-id:
-  nix develop -c terraform output -raw superuser_api_token_id
-
-show-token-value:
-  nix develop -c terraform output -raw superuser_api_token_value
+  nix develop -c terraform output -raw api_token_id

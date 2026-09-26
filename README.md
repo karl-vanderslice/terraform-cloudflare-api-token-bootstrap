@@ -1,119 +1,204 @@
-# Terraform Cloudflare API Token Bootstrap
+# Cloudflare API token bootstrap
 
-Creates a Cloudflare account API token with effectively superuser access by:
+Create one account-owned Cloudflare API token with Terraform. The default
+`read_only` mode grants available read permissions for the selected account,
+its zones, and its R2 buckets. Set `token_mode = "admin"` to retain the broad
+account and zone permissions used by the original bootstrap configuration.
 
-- Authenticating with a Cloudflare user Global API Key.
-- Detecting the target account (or using an explicit account ID).
-- Loading all account API token permission groups via the v5 list data source.
-- Granting those permissions over the account and all zones in that account.
+This repository uses local Terraform state. It does not configure HCP Terraform,
+store bootstrap credentials in variables, or configure a downstream MCP server.
 
-By default, the token includes account and account-zone scoped permissions.
+## Scope and limits
 
-## Files
+The token belongs to **one explicitly selected Cloudflare account**. Policies
+cover that account, all current and future zones in it, and, in read-only mode,
+all R2 buckets in it. Cloudflare assigns permissions to distinct account, zone,
+and bucket resource scopes, so Terraform builds a separate policy for each.
+Permission groups come from Cloudflare's account-token API at plan time. Read-only
+mode selects groups whose names end in `Read` or `Read-Only`, plus the
+documented read-only `Account Security Center Insights` group. Review the
+planned permission changes whenever Cloudflare adds groups.
 
-- `main.tf`: Provider config, permission group discovery, and token resource.
-- `variables.tf`: Inputs, including global API key.
-- `outputs.tf`: Token ID and sensitive token value.
-- `terraform.tfvars.example`: Example input values.
+An account-owned token cannot grant user-scoped permissions, cover other
+accounts, or access products that do not support account tokens. Cloudflare
+maintains a [product compatibility matrix](https://developers.cloudflare.com/fundamentals/api/get-started/account-owned-tokens/).
+If your MCP server needs user resources or multiple accounts, create a
+user-owned token with Cloudflare's
+[Read All Resources template](https://developers.cloudflare.com/fundamentals/api/reference/template/)
+in the dashboard instead. That token has the user's access boundary and is not
+managed by this repository. A read-only token also does not make an MCP server's
+tools read-only; configure the server's allowed tools separately.
 
-## Usage
+## Quick start
 
-1. Create your variables file:
+You need Nix, access to the target Cloudflare account as a Super Administrator,
+and a bootstrap credential authorized for **Account API Tokens Write** on that
+account. Find the account ID in the Cloudflare dashboard. Cloudflare documents
+[account-token creation requirements](https://developers.cloudflare.com/fundamentals/api/get-started/account-owned-tokens/)
+and the [token creation API permission](https://developers.cloudflare.com/api/resources/accounts/subresources/tokens/methods/create/).
 
-   ```bash
+1. Enter the development shell and set the account ID:
+
+   ```sh
+   nix develop
    cp terraform.tfvars.example terraform.tfvars
    ```
 
-2. Fill in `terraform.tfvars` with your Cloudflare email and global API key.
+   Replace the example ID in the ignored `terraform.tfvars`. Leave
+   `token_mode` unset for read-only access. Set `token_mode = "admin"` only
+   for the original broad bootstrap use case.
 
-3. Enter the Nix dev shell:
+2. Supply a bootstrap credential using one of the paths in
+   [Bootstrap authentication](#bootstrap-authentication). Keep it outside
+   Terraform variables and the repository.
 
-   ```bash
-   nix develop
-   ```
+3. Check the configuration and inspect the actual plan:
 
-4. Install Git hooks once per clone:
-
-   ```bash
-   just install-hooks
-   ```
-
-5. Run local quality and security checks:
-
-   ```bash
+   ```sh
    just ci
+   just init
+   just plan
    ```
 
-6. Initialize and apply:
+   Confirm the account ID, token name, resource scopes, permission groups, and
+   that the plan changes only the intended token. `just plan` calls Cloudflare
+   but does not create a token.
 
-   ```bash
-   terraform init
-   terraform apply
+4. Create or update the token:
+
+   ```sh
+   just apply
    ```
 
-7. Read the sensitive token output when apply completes, then store it in your secret manager.
+   Terraform asks for approval. Retrieve `api_token_value` with
+   `terraform output -raw api_token_value` in a private terminal, or pipe it
+   directly into the secret transport owned by your MCP server. This command
+   prints the secret; never log or save its output in the repository. The non-secret
+   `api_token_id` is available with `just show-token-id`. Do not place the
+   token value in an MCP config committed to Git.
 
-## State Backend
+5. Remove the bootstrap credential from the shell:
 
-State is stored in HCP Terraform workspace
-`terraform-cloudflare-api-token-bootstrap` under organization
-`karl-vanderslice-org` on `app.terraform.io`.
+   ```sh
+   unset CLOUDFLARE_API_TOKEN CLOUDFLARE_API_KEY CLOUDFLARE_EMAIL
+   ```
 
-Authenticate Terraform CLI with `TFE_TOKEN` (or run `terraform login`) before
-`just init`/`terraform init`.
+   Keep the local state secure while the token exists. The token value remains
+   in state even though Terraform marks its output sensitive.
 
-## Sensible defaults
+## Bootstrap authentication
 
-- `token_name` defaults to `terraform-superuser`.
-- `allowed_cidrs` defaults to empty (`[]`) so no IP restriction is applied by default.
-- If `allowed_cidrs` is provided, a token IP allow-list condition is added.
-- `cloudflare_account_id` defaults to `null`; when set, it is used directly.
-- `cloudflare_account_name` defaults to `null`; when account ID is unset, this name is used.
-- If both are unset, the first account returned by the API is used.
+Cloudflare's Terraform provider reads `CLOUDFLARE_API_TOKEN` or the legacy
+`CLOUDFLARE_API_KEY` and `CLOUDFLARE_EMAIL` environment variables. It does not
+accept a Cloudflare username and password directly. Use the dashboard login to
+create a short-lived bootstrap token, or use Wrangler's browser login and pass
+its access token into the shell. Cloudflare documents the
+[provider environment variables](https://developers.cloudflare.com/api/terraform/)
+and [Wrangler authentication commands](https://developers.cloudflare.com/workers/wrangler/commands/general/).
 
-## Provider version
+### Short-lived bootstrap API token
 
-This configuration targets Cloudflare Terraform provider v5+.
+In **Manage Account > Account API Tokens**, create a token for the selected
+account with `Account API Tokens Write`. Set a short expiration and, if useful,
+a client IP restriction. The bootstrap token is separate from the token that
+this repository creates. Enter its value without shell echo or history:
 
-## Security note
+```sh
+read -rsp 'Bootstrap API token: ' CLOUDFLARE_API_TOKEN
+printf '\n'
+export CLOUDFLARE_API_TOKEN
+```
 
-This token is intentionally broad for bootstrap workflows. After bootstrapping, consider rotating to narrower-scoped tokens per automation use case.
+The read-only output token cannot create another token. Creating an
+account-owned token still requires write-capable bootstrap authority.
 
-## Justfile helpers
+### Wrangler browser login
 
-- `just fmt` runs `terraform fmt -recursive`.
-- `just init` initializes Terraform in the Nix shell.
-- `just validate` runs `terraform init -backend=false` and `terraform validate`.
-- `just plan` runs plan in the Nix shell.
-- `just apply` runs apply in the Nix shell.
-- `just checkov` runs Checkov against Terraform files.
-- `just lint` runs all Nix-defined checks (including hooks) via `nix flake check`.
-- `just install-hooks` enters the Nix dev shell to install git hooks from `nix-pre-commit-hooks`.
-- `just ci` runs the full Nix-defined local quality checks.
-- `just show-token-id` prints the token ID.
-- `just show-token-value` prints the token value.
+If you already have Wrangler installed, log in using your normal Cloudflare
+dashboard account. Wrangler can keep its OAuth refresh credential in the OS
+keyring with `--use-keyring`; its default storage is a plaintext local file.
+The Terraform provider does not read Wrangler's login itself. Move only the
+short-lived access token into the current shell:
 
-## Security and secret hygiene
+```sh
+unset CLOUDFLARE_API_TOKEN CLOUDFLARE_API_KEY CLOUDFLARE_EMAIL
+wrangler login --use-keyring
+IFS= read -r CLOUDFLARE_API_TOKEN < <(wrangler auth token)
+export CLOUDFLARE_API_TOKEN
+```
 
-- `.gitignore` excludes local state and variable files, including `terraform.tfvars`.
-- Git hooks are managed by `https://github.com/serokell/nix-pre-commit-hooks` from the Nix flake.
-- Terraform format, Checkov, and secret scanning are enforced as Nix flake checks.
+The shell bridge requires Bash. If the access token expires between plan and
+apply, repeat the `read` and `export` lines to obtain a refreshed token.
+The Wrangler login must have enough Cloudflare authorization to create account
+tokens; if Cloudflare rejects it, use the short-lived bootstrap API token path.
+Run `wrangler logout` when you want to revoke Wrangler's OAuth session.
+Wrangler is optional and is not a dependency of this Nix shell.
 
-## Terraform Reference
+### Global API key
+
+The legacy Global API Key works with the account email, but is long-lived and
+broad. Use it only if a scoped bootstrap token or Wrangler login is unavailable:
+
+```sh
+read -rp 'Cloudflare account email: ' CLOUDFLARE_EMAIL
+read -rsp 'Global API key: ' CLOUDFLARE_API_KEY
+printf '\n'
+export CLOUDFLARE_EMAIL CLOUDFLARE_API_KEY
+```
+
+Keep `CLOUDFLARE_API_TOKEN` unset when using this path. Never put any of these
+credentials in `terraform.tfvars`, `.env`, command arguments, or saved plans.
+
+## Local state and migration
+
+The local backend writes `terraform.tfstate` and backup files beside the
+configuration. These files contain the created token value in plaintext.
+`.gitignore` excludes them and local plan and variable files. Keep the
+directory accessible only to the operator, back up state through an encrypted
+secret storage process, and delete backups through that process when no longer
+needed. Losing state does not revoke the token; revoke it in Cloudflare if the
+value or state is exposed.
+
+If this repository was already applied through HCP Terraform, **migrate its
+state before applying this local backend**. In the existing initialized
+working directory, take a protected state backup using your approved secret
+transport. After updating the configuration, run
+`terraform init -migrate-state` and inspect the migration prompt and
+resulting local state.
+Do not run `terraform init -reconfigure` against an existing remote state:
+that disconnects Terraform from the managed token and can produce a duplicate
+token on the next apply. The repository does not run this migration for you.
+
+Existing state addresses migrate from
+`cloudflare_account_token.superuser` to `cloudflare_account_token.bootstrap`
+through a Terraform `moved` block. Changing from the old broad token to
+`read_only` intentionally changes its permissions. Review that plan before
+apply. Existing output names also change to `api_token_id` and
+`api_token_value`.
+
+## Development
+
+`just fmt` formats Terraform. `just test` runs validation and input
+regression tests without Cloudflare credentials. `just ci` runs the Nix
+quality checks and tests. `just terraform-docs` refreshes the generated
+reference below. `just install-hooks` installs the repository's Nix-managed
+Git hooks.
+
+## Terraform reference
 
 <!-- BEGIN_TF_DOCS -->
 ## Requirements
 
 | Name | Version |
 |------|---------|
-| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.5.0 |
+| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.7.0 |
 | <a name="requirement_cloudflare"></a> [cloudflare](#requirement\_cloudflare) | >= 5.0, < 6.0 |
 
 ## Providers
 
 | Name | Version |
 |------|---------|
-| <a name="provider_cloudflare"></a> [cloudflare](#provider\_cloudflare) | 5.18.0 |
+| <a name="provider_cloudflare"></a> [cloudflare](#provider\_cloudflare) | 5.19.0 |
 
 ## Modules
 
@@ -123,32 +208,22 @@ No modules.
 
 | Name | Type |
 |------|------|
-| [cloudflare_account_token.superuser](https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/resources/account_token) | resource |
+| [cloudflare_account_token.bootstrap](https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/resources/account_token) | resource |
 | [cloudflare_account_api_token_permission_groups_list.all](https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/data-sources/account_api_token_permission_groups_list) | data source |
-| [cloudflare_accounts.all](https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/data-sources/accounts) | data source |
-| [cloudflare_accounts.named](https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/data-sources/accounts) | data source |
-| [cloudflare_zones.all](https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/data-sources/zones) | data source |
 
 ## Inputs
 
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
-| <a name="input_allowed_cidrs"></a> [allowed\_cidrs](#input\_allowed\_cidrs) | Optional CIDR allow-list for API token usage. Leave empty for no IP restriction. | `list(string)` | `[]` | no |
-| <a name="input_cloudflare_account_id"></a> [cloudflare\_account\_id](#input\_cloudflare\_account\_id) | Optional Cloudflare account ID. If unset, the first account returned by the API is used. | `string` | `null` | no |
-| <a name="input_cloudflare_account_name"></a> [cloudflare\_account\_name](#input\_cloudflare\_account\_name) | Optional Cloudflare account name. Used when cloudflare\_account\_id is not set. | `string` | `null` | no |
-| <a name="input_cloudflare_email"></a> [cloudflare\_email](#input\_cloudflare\_email) | Cloudflare account email used with the global API key. | `string` | n/a | yes |
-| <a name="input_cloudflare_global_api_key"></a> [cloudflare\_global\_api\_key](#input\_cloudflare\_global\_api\_key) | Cloudflare Global API Key for bootstrapping the token. | `string` | n/a | yes |
-| <a name="input_token_name"></a> [token\_name](#input\_token\_name) | Name for the superuser API token. | `string` | `"terraform-superuser"` | no |
+| <a name="input_allowed_cidrs"></a> [allowed\_cidrs](#input\_allowed\_cidrs) | Optional client IP CIDR allow-list. Empty permits use from any client IP. | `list(string)` | `[]` | no |
+| <a name="input_cloudflare_account_id"></a> [cloudflare\_account\_id](#input\_cloudflare\_account\_id) | Cloudflare account ID that owns the token and defines its resource boundary. | `string` | n/a | yes |
+| <a name="input_token_mode"></a> [token\_mode](#input\_token\_mode) | Permission mode: read\_only grants account, zone, and R2 bucket read groups; admin grants all account and zone groups. | `string` | `"read_only"` | no |
+| <a name="input_token_name"></a> [token\_name](#input\_token\_name) | Optional token name. Defaults to cloudflare-read-only or cloudflare-admin. | `string` | `null` | no |
 
 ## Outputs
 
 | Name | Description |
 |------|-------------|
-| <a name="output_superuser_api_token_id"></a> [superuser\_api\_token\_id](#output\_superuser\_api\_token\_id) | ID of the generated superuser API token. |
-| <a name="output_superuser_api_token_value"></a> [superuser\_api\_token\_value](#output\_superuser\_api\_token\_value) | Generated API token value. Store it securely; Cloudflare returns it only at creation time. |
+| <a name="output_api_token_id"></a> [api\_token\_id](#output\_api\_token\_id) | ID of the account-owned API token. |
+| <a name="output_api_token_value"></a> [api\_token\_value](#output\_api\_token\_value) | Account-owned API token secret. Terraform stores this value in local state. |
 <!-- END_TF_DOCS -->
-
-## Quality checks
-
-This repository no longer carries GitHub Actions workflows. Run `just ci`
-locally to execute the full Nix-defined quality and security checks.
